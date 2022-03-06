@@ -42,3 +42,7 @@ export function getImages() {
 export function getImage() {
   return get(HOST + '/api/image')
 }
+
+export function imageReady() {
+  return get(HOST + '/api/action?type=2')
+}

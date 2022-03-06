@@ -32,7 +32,7 @@
 </template>
 
 <script>
-import { getImages, getImage } from '@/js/requests'
+import { getImages, getImage, imageReady } from '@/js/requests'
 import ElImageViewer from 'element-ui/packages/image/src/image-viewer'
 
 export default {
@@ -88,6 +88,7 @@ export default {
           if (update) {
             this.url = res.data.data
             this.showImageView = true
+            imageReady()
           }
 
         } else {

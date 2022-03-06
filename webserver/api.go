@@ -24,7 +24,12 @@ func handleAction(w http.ResponseWriter, r *http.Request) (int, interface{}) {
 
 	if typ == ActionStart {
 		// start gallery, reset Index
+		logger.Info("receive start signal from web")
 		atomic.StoreInt32(&Index, 0)
+		return 200, hw.NewRestSuccess(nil)
+	} else if typ == ActionReady {
+		logger.Info("receive image ready signal from web")
+		actionCh <- 1
 		return 200, hw.NewRestSuccess(nil)
 	}
 	return 200, hw.NewRestError(codeNotPlemented, "")

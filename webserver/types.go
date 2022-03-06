@@ -9,6 +9,7 @@ type Action uint8
 const (
 	_ Action = iota
 	ActionStart
+	ActionReady
 	ActionStop
 	ActionPause
 	ActionContinue

@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	logger *zap.SugaredLogger
-	host   string
+	logger   *zap.SugaredLogger
+	host     string
+	actionCh chan int
 )
 
 func StartServer() error {
@@ -28,4 +29,8 @@ func StartServer() error {
 	http.Handle("/", http.FileServer(http.Dir("../statics")))
 
 	return http.ListenAndServe(host, nil)
+}
+
+func InitActionCh(ch chan int) {
+	actionCh = ch
 }

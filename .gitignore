@@ -3,3 +3,6 @@
 statics
 /cmd/cmd
 /gallery/node_modules
+*.txt
+__pycache__
+*.pyc

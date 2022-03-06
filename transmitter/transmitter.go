@@ -1,12 +1,17 @@
 package transmitter
 
 import (
+	"encoding/json"
+	"fmt"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
-	"syncsampling/courier"
+	// "syncsampling/courier"
+
 	"syncsampling/logs"
+	"syncsampling/utils"
 	"syncsampling/utils/tcpconn"
 	"syncsampling/webserver"
 )
@@ -17,36 +22,43 @@ var (
 )
 
 type Transmitter struct {
-	tcp *courier.Server
+	tcp     *tcpconn.Server
+	tcpPort int // tcp host port, just for recorded
 
-	rxIP    string
-	txIndex int64
-	rxIndex int64
+	rxIP string // IP of Rx
+	// txIndex int64  // current index in Tx
+	rxIndex int32 // current index in Rx
+
+	actionCh chan int // receive action signal from webserver. 1-start
 }
 
 func NewTransmitter() (*Transmitter, error) {
 	logger = logs.GetLogger()
 
+	port := 26001
 	tcp = tcpconn.ServerConfig{
-		Listen:      "127.0.0.1:26001",
+		Listen:      fmt.Sprintf("127.0.0.1:%d", port),
 		MaxConn:     10,
 		MessageSize: 65535,
 	}
 
-	server, err := courier.NewServerWithTCP(tcp)
+	server, err := tcpconn.NewServer(tcp)
 	if err != nil {
 		return nil, err
 	}
-	registerMessage(server)
 
 	m := Transmitter{
 		tcp:     server,
-		txIndex: 0,
-		rxIndex: -1,
+		tcpPort: port,
+		// txIndex:  0,
+		rxIndex:  -1,
+		actionCh: make(chan int, 0),
 	}
 
 	// reset webserver.Index to 0
 	atomic.StoreInt32(&webserver.Index, 0)
+	atomic.StoreInt32(&m.rxIndex, -1)
+	webserver.InitActionCh(m.actionCh)
 
 	return &m, nil
 }
@@ -54,8 +66,11 @@ func NewTransmitter() (*Transmitter, error) {
 func (tx *Transmitter) Run() error {
 	// start tcp server
 	go func() {
-		logger.Infof("start tcp server")
-		err := tx.tcp.Run()
+		ip, _ := utils.GetOutBoundIP()
+		logger.Infof("start tcp server at %s:%d", ip, tx.tcpPort)
+		logger.Infof("                 or localhost:%d", tx.tcpPort)
+
+		err := tx.tcp.Start()
 		if err != nil {
 			logger.Fatalf("tcp server exit: %s", err)
 		}
@@ -70,91 +85,98 @@ func (tx *Transmitter) Run() error {
 		}
 	}()
 
+	go tx.handleAction()
+
 	return tx.handleTCP()
+}
+
+func (tx *Transmitter) handleAction() {
+	for {
+		a, ok := <-tx.actionCh
+		if !ok {
+			logger.Errorf("action chan close.")
+			return
+		}
+		if a == 1 {
+			logger.Infof("receive action signal")
+			logger.Infof("start sync system")
+
+			time.Sleep(time.Millisecond * 100)
+			tx.SendSignal()
+		}
+	}
 }
 
 func (tx *Transmitter) handleTCP() error {
 	for {
-		logger.Info("tcp server ready")
-
 		// new tcp connection
 		ip := <-tx.tcp.NewConnection()
 		ch := tx.tcp.Receive(ip)
 		logger.Infof("new connection %s", ip)
 		tx.rxIP = ip
 
+	OneConn:
 		for {
 			select {
 			case pkg, ok := <-ch:
 				// mesage from tcp
 				if !ok {
-					logger.Errorf("tcp connection closed.")
-					return nil
+					logger.Warnf("tcp connection closed.")
+					atomic.StoreInt32(&webserver.Index, 0)
+					atomic.StoreInt32(&tx.rxIndex, -1)
+					break OneConn
+				}
+				// logger.Infof("receive raw from Rx: %s", pkg)
+
+				signal := Signal{}
+				err := json.Unmarshal(pkg, &signal)
+				if err != nil {
+					logger.Warnf("failed to decode: %s with raw: %s", err, pkg)
 				}
 
-				switch pkg.M.(type) {
-				case *Signal:
-					// signal from tcp
-					signal := pkg.M.(*Signal)
+				if signal.Action == 2 {
+					// correct signal
+					logger.Infof("signal from Rx, updating index...")
 
-					if signal.Action == 2 {
-						// correct signal
-						logger.Infof("signal from Rx, updating index...")
+					if signal.Index == tx.rxIndex+1 {
+						// latest image has been received
+						tx.rxIndex = signal.Index
 
-						if signal.Index == tx.rxIndex+1 {
-							// latest image has been received
-							tx.rxIndex = signal.Index
-
-							newIndex := webserver.Index + 1
-							atomic.StoreInt32(&webserver.Index, newIndex)
-
-							logger.Infof("%d received by Rx", signal.Index)
-
-						} else {
-							// index error
-							logger.Errorf("unexpected response from Rx: %s", signal)
-						}
+						logger.Infof("%d received by Rx", signal.Index)
+						newIndex := webserver.Index + 1
+						atomic.StoreInt32(&webserver.Index, newIndex)
+						logger.Infof("index update to %d\n", newIndex)
 
 					} else {
-						// unexpected signal
-						logger.Errorf("invalid signal received: %s", signal)
-						return nil
+						// index error
+						logger.Errorf("unexpected response from Rx with index %d, rxIndex is %d", signal, tx.rxIndex)
+						tx.tcp.Disconnect(ip)
+						break OneConn
 					}
+
+				} else {
+					// unexpected signal
+					logger.Errorf("invalid signal received: %s", signal)
+					tx.tcp.Disconnect(ip)
+					break OneConn
 				}
+
 			}
 		}
 	}
 }
 
 func (tx *Transmitter) SendSignal() {
+	// Index :=  tx.txIndex,
+	index := atomic.LoadInt32(&webserver.Index)
+
 	signal := Signal{
-		Index:  tx.txIndex,
+		Index:  index,
 		Action: 1,
 	}
-	tx.tcp.Send(signal, []string{tx.rxIP})
-}
-
-// func (tx *Transmitter) GetSendIndex() int64 {
-// 	return tx.txIndex
-// }
-//
-// func (tx *Transmitter) SendIndex(i int64) bool {
-// 	logger.Infof("current Tx: %d, Rx: %d, Try to send: %d", tx.txIndex, tx.rxIndex, i)
-//
-// 	if tx.txIndex == 0 {
-// 		logger.Infof("allow to send: 0")
-// 		return true
-// 	}
-//
-// 	if i == tx.rxIndex+1 {
-// 		tx.txIndex = i
-// 		logger.Infof("allow to send: %d", i)
-// 		return true
-// 	}
-// 	logger.Warnf("%d is not allowed to send", i)
-// 	return false
-// }
-
-func registerMessage(s *courier.Server) {
-	s.Register((*Signal)(nil), 201)
+	logger.Infof("send message to Rx, index: %d", index)
+	err := tx.tcp.Send(&signal, []string{tx.rxIP})
+	if err != nil {
+		logger.Errorf("failed to send to Rx: %s", err)
+	}
 }
