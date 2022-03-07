@@ -13,6 +13,7 @@ import (
 var (
 	Images sort.StringSlice
 	Index  int32
+	Total  int32
 )
 
 func handleAction(w http.ResponseWriter, r *http.Request) (int, interface{}) {
@@ -28,9 +29,11 @@ func handleAction(w http.ResponseWriter, r *http.Request) (int, interface{}) {
 		atomic.StoreInt32(&Index, 0)
 		return 200, hw.NewRestSuccess(nil)
 	} else if typ == ActionReady {
-		logger.Info("receive image ready signal from web")
-		actionCh <- 1
-		return 200, hw.NewRestSuccess(nil)
+		if Index < Total {
+			logger.Info("receive image ready signal from web")
+			actionCh <- 1
+			return 200, hw.NewRestSuccess(nil)
+		}
 	}
 	return 200, hw.NewRestError(codeNotPlemented, "")
 }
@@ -76,8 +79,10 @@ func loadImages() error {
 		return err
 	}
 	Images = sort.StringSlice(res)
-	sort.Sort(Images)
+	Images = sortFiles(Images)
+
 	logger.Infof("%d images found as %s", len(Images), Images)
+	atomic.StoreInt32(&Total, int32(len(Images)))
 
 	return nil
 }

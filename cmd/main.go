@@ -5,6 +5,7 @@ import (
 )
 
 func main() {
-	tx, _ := transmitter.NewTransmitter()
+	// tx, _ := transmitter.NewTransmitter()
+	tx, _ := transmitter.NewTxow()
 	tx.Run()
 }
