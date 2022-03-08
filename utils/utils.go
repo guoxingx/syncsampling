@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -26,6 +27,20 @@ func ListFiles(dir string) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+func WriteLineToFile(filename, content string) error {
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	writer.WriteString(content)
+	writer.WriteString("\n")
+	writer.Flush()
+	return nil
 }
 
 func GetOutBoundIP() (ip string, err error) {

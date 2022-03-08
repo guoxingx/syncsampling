@@ -61,7 +61,6 @@ func (tx *Txow) Run() error {
 	go func() {
 		ip, _ := utils.GetOutBoundIP()
 		logger.Infof("start tcp server at %s:%d", ip, tx.tcpPort)
-		logger.Infof("                 or localhost:%d", tx.tcpPort)
 
 		err := tx.tcp.Start()
 		if err != nil {
@@ -92,14 +91,13 @@ func (tx *Txow) handleAction() {
 		}
 		if a == 1 {
 			logger.Infof("receive action signal")
-			logger.Infof("start sync")
 
 			time.Sleep(time.Millisecond * 100)
 
 			// Index :=  tx.txIndex,
 			index := atomic.LoadInt32(&webserver.Index)
 
-			interval := time.Second * 10
+			interval := time.Second * 30
 			logger.Infof("signal for index %d will sent in %s", index, interval)
 			go tx.SendSignal(index, interval)
 			go simuRx(tx.interval)
@@ -132,12 +130,22 @@ func (tx *Txow) handleTCP() error {
 }
 
 func (tx *Txow) SendSignal(index int32, d time.Duration) {
+	// Unix		1646720683
+	// UnixNano 1646720683479108000
+	// required 1646720683479
+	ts := time.Now().UnixNano()
+	ts = ts / 1000000
+
+	if err := utils.WriteLineToFile("signal.txt", fmt.Sprintf("%d", ts)); err != nil {
+		logger.Warnf("failed to backup signal: %v", err)
+	}
+
 	time.Sleep(d)
 
 	signal := Signal{
 		Index:  index,
 		Action: 4,
-		Time:   time.Now().Unix(),
+		Time:   ts,
 	}
 	logger.Infof("send message to Rx, index: %d", index)
 	err := tx.tcp.Send(&signal, []string{tx.rxIP})

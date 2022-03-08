@@ -17,10 +17,7 @@ INTERGRATION_TIME = 1.5
 SAMPLING_TIME = 0.5
 
 # 允许误差，超过这个值视为不同数据
-ALLOW_ERROR = 0.01
-
-# 与前 n 个数的均值对比，不应超过允许误差
-AVG_ERROR_COUNT = 5
+ALLOW_ERROR = 0.1
 
 # 输出结果的文件名
 OUTPUT_FILENAME = "output.txt"
@@ -53,17 +50,11 @@ class Sampling(object):
         if len(self.values) == 0:
             return False
 
-        count = AVG_ERROR_COUNT
-        if len(self.values) < AVG_ERROR_COUNT:
-            count = len(self.values)
-
-        avg = sum([v for v in self.values]) / len(self.values)
         last = self.values[-1]
 
         err1 = abs(last - f) / last
-        err2 = abs(avg - f) / avg
 
-        if err1 > ALLOW_ERROR or err2 > ALLOW_ERROR:
+        if err1 > ALLOW_ERROR:
             return False
         return True
 
@@ -75,9 +66,18 @@ class Sampling(object):
         #     return False
         # return True
 
+
+def ts2time(ts):
+    return datetime.fromtimestamp(ts).strftime("%H:%M:%S.%f")
+
+
 def sampling(ts, filename, index):
-    sampling_from_powermeter(ts, filename)
-    log("image at index {} sampling complete".format(index))
+    try:
+        return sampling_from_powermeter(ts, filename)
+        log("image at index {} sampling complete".format(index))
+    except Exception as e:
+        log("sampling failed with exception: {}".format(e))
+        return 0
 
 
 def require_filename():
@@ -109,7 +109,7 @@ def empty_samping(ts, filename):
 
     cs.ts_begin = ts + INTERGRATION_TIME
     cs.ts_end = ts + INTERGRATION_TIME + SAMPLING_TIME
-    print("collect data between {} ~ {}".format(cs.ts_begin, cs.ts_end))
+    log("collect data between {} ~ {}".format(ts2time(cs.ts_begin), ts2time(cs.ts_end)))
 
     # time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
 
@@ -130,14 +130,14 @@ def empty_samping(ts, filename):
             t = datetime.strptime("{} {}".format(dateStr, timeStr), "%d/%m/%Y %H:%M:%S")
 
             ts = time.mktime(t.timetuple())
-            print("find activate time is {}, ts: {}".format(t, ts))
+            log("find activate time is {}, time: {}, line: {}".format(t, ts2time(ts), i))
 
             global PMActiveTs
             PMActiveTs = ts
             continue
 
         if "Timestamp" in line:
-            print("find the beginning of data")
+            log("find the beginning of data, line: {}".format(i))
             begin = True
             continue
 
@@ -147,21 +147,29 @@ def empty_samping(ts, filename):
         s = line.strip()
         parts = s.split(" ")
 
-        d, vs = float(parts[0]), parts[-1]
-        # print("ts of this line: {}".format(d + PMActiveTs))
+        d, value = parts[0], parts[-1]
+        try:
+            d = float(d)
+            value = float(value)
+        except Exception as e:
+            log("failed to convert interval: {}".format(e))
+            log("line {}: {} into {}".format(i, line, parts))
+
         if d + PMActiveTs < cs.ts_begin:
             # only record after INTERGRATION_TIME
             continue
 
         if d + PMActiveTs > cs.ts_end:
+            log("out of range of time, loop will be finished")
             break
 
+        log("[valid] value: {}, line: {}, time: {}".format(value, i, ts2time(d + PMActiveTs)))
         # record the first and the last line
         if cs.begin == 0:
             cs.begin = i
-        cs.end = i
+        if i > cs.end:
+            cs.end = i
 
-        value = parse_value(vs)
         cs.values.append(value)
 
         # only recorded when value is stabled
@@ -171,36 +179,44 @@ def empty_samping(ts, filename):
                 cs.valid_begin = i
             cs.valid_end = i
 
+    log("finish loop, ended in line {}".format(i))
     if len(cs.valid_values) == 0:
-        print(cs.values)
+        log("no valid values found!")
+        log("all values: {}".format(cs.values))
         f.close()
-        raise ValueError("falied to load valid value")
 
     f.close()
 
-    cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
-    log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
-    log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
-    print("")
+    if len(cs.valid_values) == 0:
+        log("falied to load valid value, 0 will be write into output file")
+        cs.avg = 0
+    else:
+        cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
+        log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
+        log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
+        print("")
 
     f = open(OUTPUT_FILENAME, 'a+')
     f.write("\n")
     f.write("[采集结果] 开始时间：{}\n".format(datetime.fromtimestamp(ts)))
-    f.write("{}\n".format(cs.avg))
     f.close()
 
     global Prev
     Prev = cs
 
+    return cs.avg
+
 
 def sampling_from_powermeter(ts, filename):
+    global Prev
     if Prev == None:
-        print("first sampling")
+        log("first sampling")
         return empty_samping(ts, filename)
 
     # record timestamp in the begining
     cs = Sampling()
     cs.ts_begin = time.time()
+    cs.end = Prev.end
 
     # if SIMU_D != 0:
     #     now = now - SIMU_D
@@ -210,37 +226,43 @@ def sampling_from_powermeter(ts, filename):
 
     cs.ts_begin = ts + INTERGRATION_TIME
     cs.ts_end = ts + INTERGRATION_TIME + SAMPLING_TIME
-    print("collect data between {} ~ {}".format(cs.ts_begin, cs.ts_end))
+    log("collect data between time {} ~ {}".format(ts2time(cs.ts_begin), ts2time(cs.ts_end)))
 
-    time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
+    # time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
 
     f = open(filename, 'r')
 
-    print("prev samping ended in line {}".format(Prev.end))
+    log("line befor {} will be skiped".format(Prev.end))
     for i, line in enumerate(f.readlines()):
-        # print(i, line)
-
         if i < Prev.end:
             continue
 
         s = line.strip()
         parts = s.split(" ")
 
-        d, vs = float(parts[0]), parts[-1]
-        # print("ts of this line: {}".format(d + PMActiveTs))
+        d, value = parts[0], parts[-1]
+        try:
+            d = float(d)
+            value = float(value)
+        except Exception as e:
+            log("failed to convert interval: {}".format(e))
+            log("line {}: {} into {}".format(i, line, parts))
+
         if d + PMActiveTs < cs.ts_begin:
             # only record after INTERGRATION_TIME
             continue
 
         if d + PMActiveTs > cs.ts_end:
+            log("out of range of time, loop will be finished")
             break
 
         # record the first and the last line
         if cs.begin == 0:
             cs.begin = i
-        cs.end = i
+        if i > cs.end:
+            cs.end = i
 
-        value = parse_value(vs)
+        log("[valid] value: {}, line: {}, time: {}".format(value, i, ts2time(d + PMActiveTs)))
         cs.values.append(value)
 
         # only recorded when value is stabled
@@ -250,25 +272,26 @@ def sampling_from_powermeter(ts, filename):
                 cs.valid_begin = i
             cs.valid_end = i
 
+    log("finish loop, ended in line {}".format(i))
     if len(cs.valid_values) == 0:
-        print(cs.values)
+        log("no valid values found!")
+        log("all values: {}".format(cs.values))
         f.close()
-        raise ValueError("falied to load valid value")
 
     f.close()
 
-    cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
-    log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
-    log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
-    print("")
+    if len(cs.valid_values) == 0:
+        log("falied to load valid value, 0 will be write into output file")
+        cs.avg = 0
+    else:
+        cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
+        log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
+        log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
+        print("")
 
-    f = open(OUTPUT_FILENAME, 'a+')
-    f.write("{}\n".format(cs.avg))
-    f.close()
-
-
-def parse_value(s):
-    return float(s)
+    Prev = None
+    Prev = cs
+    return cs.avg
 
 
 def require_host():
@@ -280,6 +303,23 @@ def require_host():
     global HostAddr
     HostAddr = host
     return True
+
+
+def record_signal(ts):
+    f = open("signals.txt".format(), 'a+')
+    f.write("{}\n".format(ts))
+    f.close()
+    log("signal time {} write into file".format(ts2time(ts)))
+
+
+def ts_from_recorded_signals():
+    ts = []
+    f = open("signals.txt".format(), 'r')
+    for i, line in enumerate(f.readlines()):
+        ts.append(float(line))
+    f.close()
+    return ts
+
 
 
 def log(s):
@@ -300,10 +340,11 @@ def start_client():
 
     while True:
         """
-        {"i":0,"a":1,"t":}\n
+        {"i":0,"a":1,"t": 16467206834791}\n
+        t: ts in millisecond
         """
         data = client.recv(255)
-        print("receive raw from Tx: {}".format(data))
+        log("receive raw from Tx: {}".format(data))
 
         message = json.loads(data.decode())
         # print("receive from Tx: {}".format(message))
@@ -313,20 +354,40 @@ def start_client():
 
         ts = time.time()
         if message["a"] == 4:
-            ts = message["t"]
+            ts = message["t"] / 1000.0
+            log("use signal time: {}".format(datetime.fromtimestamp(ts)))
 
-        sampling(ts, filename, index)
-        log("response to Tx\n")
+        # sampling
+        res = sampling(ts, filename, index)
 
-        sendMessage = {"i": index,"a": 2}
-        sendData = json.dumps(sendMessage).encode()
-        end = b'\n'
-        sendData = sendData + end
-        # print("sending data {} to Tx".format(sendData))
-        client.send(sendData)
+        # plan B
+        record_signal(ts)
+
+        f = open(OUTPUT_FILENAME, 'a+')
+        f.write("{}\n".format(res))
+        f.close()
+
+        log("\n")
+        # log("response to Tx\n")
+
+        # sendMessage = {"i": index,"a": 2}
+        # sendData = json.dumps(sendMessage).encode()
+        # end = b'\n'
+        # sendData = sendData + end
+        # client.send(sendData)
 
 
 if __name__ == "__main__":
+    # sampling(1646653084, "sample.txt", 0)
+    # sampling(1646653087, "sample.txt", 1)
+
+    # record_signal(1646653084)
+    # record_signal(1646653087)
+
+    # tss = ts_from_recorded_signals()
+    # for i, ts in enumerate(tss):
+    #     sampling(ts, "sample.txt", i)
+
     if not require_host():
         print("abort")
         exit()

@@ -101,7 +101,6 @@ func (tx *Transmitter) handleAction() {
 		}
 		if a == 1 {
 			logger.Infof("receive action signal")
-			logger.Infof("start sync system")
 
 			time.Sleep(time.Millisecond * 100)
 			tx.SendSignal()

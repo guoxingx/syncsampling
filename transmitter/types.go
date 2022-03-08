@@ -9,5 +9,5 @@ package transmitter
 type Signal struct {
 	Index  int32 `json:"i"`
 	Action uint8 `json:"a"`
-	Time   int64 `json:"t"`
+	Time   int64 `json:"t"` // milisecond required
 }

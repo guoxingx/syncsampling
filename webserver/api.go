@@ -81,7 +81,8 @@ func loadImages() error {
 	Images = sort.StringSlice(res)
 	Images = sortFiles(Images)
 
-	logger.Infof("%d images found as %s", len(Images), Images)
+	// logger.Infof("%d images found as %s", len(Images), Images)
+	logger.Infof("%d images founded", len(Images))
 	atomic.StoreInt32(&Total, int32(len(Images)))
 
 	return nil
