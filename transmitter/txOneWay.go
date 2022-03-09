@@ -136,7 +136,7 @@ func (tx *Txow) SendSignal(index int32, d time.Duration) {
 	ts := time.Now().UnixNano()
 	ts = ts / 1000000
 
-	if err := utils.WriteLineToFile("signal.txt", fmt.Sprintf("%d", ts)); err != nil {
+	if err := utils.WriteLineToFile("signals_tx.txt", fmt.Sprintf("%d", ts)); err != nil {
 		logger.Warnf("failed to backup signal: %v", err)
 	}
 

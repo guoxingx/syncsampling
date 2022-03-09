@@ -21,7 +21,7 @@
     <el-col :span="12">
 
       <div :visible="started">
-        <img :src="url" width="730" height="730">
+        <img :src="url" width="770" height="730">
       </div>
 
 

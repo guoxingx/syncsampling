@@ -21,6 +21,7 @@ ALLOW_ERROR = 0.1
 
 # 输出结果的文件名
 OUTPUT_FILENAME = "output.txt"
+SIGNAL_FILE = "signals_50_1002.txt"
 
 SIMU_TIME = 1646622842
 SIMU_D = 0
@@ -314,7 +315,7 @@ def record_signal(ts):
 
 def ts_from_recorded_signals():
     ts = []
-    f = open("signals.txt".format(), 'r')
+    f = open(SIGNAL_FILE, 'r')
     for i, line in enumerate(f.readlines()):
         ts.append(float(line))
     f.close()
@@ -384,16 +385,20 @@ if __name__ == "__main__":
     # record_signal(1646653084)
     # record_signal(1646653087)
 
-    # tss = ts_from_recorded_signals()
-    # for i, ts in enumerate(tss):
-    #     sampling(ts, "sample.txt", i)
+    f = open(OUTPUT_FILENAME, 'a+')
+    tss = ts_from_recorded_signals()
+    for i, ts in enumerate(tss):
+        res = sampling(ts, "sample.txt", i)
+        time.sleep(2)
+        f.write("{}\n".format(res))
+    f.close()
 
-    if not require_host():
-        print("abort")
-        exit()
+    # if not require_host():
+    #     print("abort")
+    #     exit()
 
-    if not require_filename():
-        print("abort")
-        exit()
+    # if not require_filename():
+    #     print("abort")
+    #     exit()
 
-    start_client()
+    # start_client()
