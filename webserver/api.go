@@ -69,6 +69,20 @@ func handleImages(w http.ResponseWriter, r *http.Request) (int, interface{}) {
 	return 200, hw.NewRestSuccess(Images)
 }
 
+func handleContrast(w http.ResponseWriter, r *http.Request) (int, interface{}) {
+	if r.Method != "GET" {
+		return 405, nil
+	}
+
+	urls := []string{
+		fmt.Sprintf("http://%s/contrast/p_1.png", host),
+		fmt.Sprintf("http://%s/contrast/p_2.png", host),
+		fmt.Sprintf("http://%s/contrast/p_3.png", host),
+		fmt.Sprintf("http://%s/contrast/p_4.png", host),
+	}
+	return 200, hw.NewRestSuccess(urls)
+}
+
 func loadImages() error {
 	if Images != nil {
 		return nil

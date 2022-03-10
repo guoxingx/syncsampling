@@ -25,6 +25,7 @@ func StartServer() error {
 	http.HandleFunc("/api/action", httpwrap.Handler(handleAction).Base)
 	http.HandleFunc("/api/image", httpwrap.Handler(handleImage).Base)
 	http.HandleFunc("/api/images", httpwrap.Handler(handleImages).Base)
+	http.HandleFunc("/api/images/contrast", httpwrap.Handler(handleContrast).Base)
 
 	http.Handle("/", http.FileServer(http.Dir("../statics")))
 

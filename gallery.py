@@ -40,7 +40,7 @@ class MainHandler(SimpleHTTPRequestHandler):
         global Index
         if Index < Total:
             # record ts
-            record_signal(time.time())
+            record_signal(time.time(), Index)
 
             self.set_API_header()
             return self.response(None)
@@ -48,7 +48,7 @@ class MainHandler(SimpleHTTPRequestHandler):
     def handle_API_image(self):
         images = load_images()
         if len(images) <= int(Index):
-            self.response("")
+            return self.response("")
         else:
             print("showing image with index {}".format(Index))
 
@@ -101,8 +101,12 @@ def cmp_image_name(a, b):
     return int(a[2:-4]) - int(b[2:-4])
 
 
-def record_signal(ts):
+def record_signal(ts, index):
     f = open("signals.txt".format(), 'a+')
+
+    if index == 0:
+        f.write("\n我是分割线\n")
+
     f.write("{}\n".format(ts))
     f.close()
     print("signal time {} write into file".format(ts2time(ts)))

@@ -21,12 +21,11 @@ ALLOW_ERROR = 0.1
 
 # 输出结果的文件名
 OUTPUT_FILENAME = "output.txt"
-SIGNAL_FILE = "signals_50_1002.txt"
+SIGNAL_FILE = "signals.txt"
 
 SIMU_TIME = 1646622842
 SIMU_D = 0
 
-FileName = None # filename of the output .txt file of power meter
 PMActiveTs = None # activate timestamp of power meter
 
 Prev = None
@@ -72,41 +71,39 @@ def ts2time(ts):
     return datetime.fromtimestamp(ts).strftime("%H:%M:%S.%f")
 
 
-def sampling(ts, filename, index):
-    try:
-        return sampling_from_powermeter(ts, filename)
-        log("image at index {} sampling complete".format(index))
-    except Exception as e:
-        log("sampling failed with exception: {}".format(e))
-        return 0
+def sampling(ts, pm_output_file, index):
+    # try:
+    #     return sampling_from_powermeter(ts, pm_output_file)
+    #     log("image at index {} sampling complete".format(index))
+    # except Exception as e:
+    #     log("sampling failed with exception: {}".format(e))
+    #     return 0
+
+    return sampling_from_powermeter(ts, pm_output_file)
+    log("image at index {} sampling complete".format(index))
+    return 0
 
 
-def require_filename():
-    name = input("type in 'filename' of power meter: ")
+def filename_required(default=None, note=None):
+    if note == None:
+        name = input("type in 'filename': ")
+    else:
+        name = input("type in 'filename' of {}: ".format(note))
 
-    if name == "":
-        name = "sample.txt"
+    if name == "" and default != None:
+        name = default
 
     f = open(name, 'r')
     f.close()
-
-    global FileName
-    FileName = name
-    return True
+    return name
 
 
-def empty_samping(ts, filename):
+def empty_samping(ts, pm_output_file):
     """
     ;First Pulse Arrived : 06/03/2022 at 11:24:59
     """
     cs = Sampling()
     cs.begin = 0
-
-    # if SIMU_TIME != 0:
-    #     global SIMU_D
-    #     SIMU_D = now - SIMU_TIME
-    # now = SIMU_TIME
-    # filename = "sample.txt"
 
     cs.ts_begin = ts + INTERGRATION_TIME
     cs.ts_end = ts + INTERGRATION_TIME + SAMPLING_TIME
@@ -114,7 +111,7 @@ def empty_samping(ts, filename):
 
     # time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
 
-    f = open(filename, 'r')
+    f = open(pm_output_file, 'r')
 
     begin = False
     for i, line in enumerate(f.readlines()):
@@ -208,22 +205,16 @@ def empty_samping(ts, filename):
     return cs.avg
 
 
-def sampling_from_powermeter(ts, filename):
+def sampling_from_powermeter(ts, pm_output_file):
     global Prev
     if Prev == None:
         log("first sampling")
-        return empty_samping(ts, filename)
+        return empty_samping(ts, pm_output_file)
 
     # record timestamp in the begining
     cs = Sampling()
     cs.ts_begin = time.time()
     cs.end = Prev.end
-
-    # if SIMU_D != 0:
-    #     now = now - SIMU_D
-
-    # now = 1646537103.0
-    # filename = "sample.txt"
 
     cs.ts_begin = ts + INTERGRATION_TIME
     cs.ts_end = ts + INTERGRATION_TIME + SAMPLING_TIME
@@ -231,7 +222,7 @@ def sampling_from_powermeter(ts, filename):
 
     # time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
 
-    f = open(filename, 'r')
+    f = open(pm_output_file, 'r')
 
     log("line befor {} will be skiped".format(Prev.end))
     for i, line in enumerate(f.readlines()):
@@ -306,6 +297,19 @@ def require_host():
     return True
 
 
+def mode_required():
+    print("choose the function to be executed:")
+    print("    1 - collect data from a signals file")
+    print("    2 - run as a RX (connecting to TX required)")
+    mode = input("type in 1 or 2: ")
+
+    if mode == "":
+        mode = 1
+    else:
+        mode = int(mode)
+    return mode
+
+
 def record_signal(ts):
     f = open("signals.txt".format(), 'a+')
     f.write("{}\n".format(ts))
@@ -313,14 +317,13 @@ def record_signal(ts):
     log("signal time {} write into file".format(ts2time(ts)))
 
 
-def ts_from_recorded_signals():
+def ts_from_recorded_signals(signalfile):
     ts = []
-    f = open(SIGNAL_FILE, 'r')
+    f = open(signalfile, 'r')
     for i, line in enumerate(f.readlines()):
         ts.append(float(line))
     f.close()
     return ts
-
 
 
 def log(s):
@@ -329,15 +332,13 @@ def log(s):
     print("{}: {}".format(now, s))
 
 
-def start_client():
+def start_client(pm_output_file):
     log("try to connect tcp host in {}:{}".format(HostAddr, HostPort))
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     host = (HostAddr, HostPort)
     # host = ("localhost", 26001)
     client.connect(host)
     log("tcp connect success!")
-
-    filename = FileName
 
     while True:
         """
@@ -359,7 +360,7 @@ def start_client():
             log("use signal time: {}".format(datetime.fromtimestamp(ts)))
 
         # sampling
-        res = sampling(ts, filename, index)
+        res = sampling(ts, pm_output_file, index)
 
         # plan B
         record_signal(ts)
@@ -379,26 +380,27 @@ def start_client():
 
 
 if __name__ == "__main__":
-    # sampling(1646653084, "sample.txt", 0)
-    # sampling(1646653087, "sample.txt", 1)
+    mode = mode_required()
 
-    # record_signal(1646653084)
-    # record_signal(1646653087)
+    if mode == 1:
+        signalfile= filename_required("signals.txt", "signal file")
+        pm_out = filename_required("sample.txt", "power meter")
 
-    f = open(OUTPUT_FILENAME, 'a+')
-    tss = ts_from_recorded_signals()
-    for i, ts in enumerate(tss):
-        res = sampling(ts, "sample.txt", i)
-        time.sleep(2)
-        f.write("{}\n".format(res))
-    f.close()
+        f = open(OUTPUT_FILENAME, 'a+')
+        tss = ts_from_recorded_signals(signalfile)
+        for i, ts in enumerate(tss):
+            res = sampling(ts, "sample.txt", i)
+            f.write("{}\n".format(res))
+        f.close()
 
-    # if not require_host():
-    #     print("abort")
-    #     exit()
+    elif mode == 2:
+        if not require_host():
+            print("unrecognized host, abort")
+            exit()
 
-    # if not require_filename():
-    #     print("abort")
-    #     exit()
+        pm_out = filename_required("sample.txt", "power meter")
+        start_client(pm_out)
 
-    # start_client()
+    else:
+        print("unrecognized mode, abort")
+        exit()
