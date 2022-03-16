@@ -9,7 +9,7 @@ from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, BaseHTTPRequestHandler
 
 HOST = ("0.0.0.0", 3000)
-INTERVAL = 2.5
+INTERVAL = 3
 
 Index = 0
 Total = 0
@@ -32,7 +32,20 @@ class MainHandler(SimpleHTTPRequestHandler):
         elif self.path == "/api/images":
             return self.handle_API_images()
 
+        elif self.path == "/api/images/contrast":
+            return self.handle_API_contrast()
+
         return SimpleHTTPRequestHandler.do_GET(self)
+
+    def handle_API_contrast(self):
+        res = [
+            "http://localhost:3000/contrast/p_1.png",
+            "http://localhost:3000/contrast/p_2.png",
+            "http://localhost:3000/contrast/p_3.png",
+            "http://localhost:3000/contrast/p_4.png",
+        ]
+        self.set_API_header()
+        return self.response(res)
 
     def handle_API_action(self):
         print("receive image ready")
@@ -85,9 +98,9 @@ def load_images():
         return Images
 
     Images = []
-    dir_path = "/Users/wuyi/developer/projects/syncsampling/statics/images"
+    dir_path = "images"
     for file in os.listdir(dir_path):
-        if file.endswith(".jpg"):
+        if file.endswith(".jpg") or file.endswith(".png"):
             Images.append(file)
 
     global Total

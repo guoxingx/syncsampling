@@ -318,12 +318,15 @@ def record_signal(ts):
 
 
 def ts_from_recorded_signals(signalfile):
-    ts = []
+    tss = []
     f = open(signalfile, 'r')
     for i, line in enumerate(f.readlines()):
-        ts.append(float(line))
+        ts = float(line)
+        if ts > 1000000000000:
+            ts = ts / 1000
+        tss.append(ts)
     f.close()
-    return ts
+    return tss
 
 
 def log(s):

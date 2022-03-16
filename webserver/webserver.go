@@ -28,6 +28,7 @@ func StartServer() error {
 	http.HandleFunc("/api/images/contrast", httpwrap.Handler(handleContrast).Base)
 
 	http.Handle("/", http.FileServer(http.Dir("../statics")))
+	// http.Handle("/", http.FileServer(http.Dir("../gallery")))
 
 	return http.ListenAndServe(host, nil)
 }

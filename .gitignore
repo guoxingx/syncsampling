@@ -2,7 +2,9 @@
 .DS_Store
 statics
 /cmd/cmd
-/gallery/node_modules
+node_modules
+*.png
+*.jpg
 *.txt
 __pycache__
 *.pyc
