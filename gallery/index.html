@@ -23,9 +23,16 @@
         <div class="col-sm-3 col-sm-offset-2">
           <h3 id="imgCount"></h3>
           <p><a class="btn btn-primary" role="button" id="play">开始播放</a></p>
-          <!-- <p><a class="btn btn-warning" role="button">停止播放</a></p> -->
           <p><a class="btn btn-primary" role="button" id="contrast">展示黑白图</a></p>
-          <p id="imgCurrent"></p>
+
+          <div class="delayDiv">
+            <label>设置延迟时间（秒）</label>
+            <input type="number" class="form-control" id="delayTime" value="30">
+          </div>
+          <p><a class="btn btn-primary" role="button" id="delay">延迟播放</a></p>
+
+          <div class="alert alert-primary" role="alert" id="warning"></div>
+          <!-- <p id="warning"></p> -->
         </div>
       </div>
     </div>
@@ -37,6 +44,10 @@
       margin-right: 0px;
       margin-top: 50px;
       margin-bottom: 50px;
-    }  
+    }
+    .delayDiv {
+      margin-top: 30px;
+      margin-bottom: 10px;
+    }
   </style>
 </html>

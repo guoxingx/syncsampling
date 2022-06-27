@@ -3,6 +3,8 @@ $(document).ready(function() {
   var HOST = "http://localhost:3000"
   var currentImage
   var timerSwitch = false
+  var contrastSwitch = false
+  var delaySwitch = false
 
 
   $.get(HOST + "/api/images", function(data,status){
@@ -17,7 +19,7 @@ $(document).ready(function() {
     if (timerSwitch == true) {
       getImage()
     }
-  }, 1000)
+  }, 500)
 
   function imageReady() {
     $.get(HOST + "/api/action?type=2", function(data, status) {
@@ -38,7 +40,7 @@ $(document).ready(function() {
           currentImage = data.data
           var parts = currentImage.split('/')
           imageName = parts[parts.length - 1]
-          $("#imgCurrent").text("当前展示: " + imageName)
+          $("#warning").text("当前展示: " + imageName)
           imageReady()
           $("#gallery").attr("src", data.data)
         }
@@ -54,20 +56,44 @@ $(document).ready(function() {
   }
 
   function showContrast() {
+    if (contrastSwitch == true) {
+      return
+    }
+    contrastSwitch = true
+
     $.get(HOST + "/api/images/contrast", function(data, status) {
       if (status == 'success') {
         var images = data.data
         var index = 0
         var ctimer = setInterval(function() {
-          if (index >= 4) {
+          if (index >= 3) {
             clearInterval(ctimer)
+            contrastSwitch = false
+            $("#warning").text("黑白图展示完毕，请刷新界面")
           }
           $("#gallery").attr("src", images[index])
           index ++
         }, 3000)
-
       }
     })
+  }
+
+  function delayAction() {
+    if (delaySwitch == true) {
+      return
+    }
+    delaySwitch = true
+
+    var delayTime = Number($("#delayTime").val())
+    var dtimer = setInterval(function() {
+      if (delayTime <= 0) {
+        clearInterval(dtimer)
+        delaySwitch = false
+        startAction()
+      }
+      $("#warning").text("散斑投影将在: " + delayTime + " 秒后开始")
+      delayTime = delayTime - 1
+    }, 1000)
   }
 
   $("#play").click(function() {
@@ -76,6 +102,10 @@ $(document).ready(function() {
 
   $("#contrast").click(function() {
     showContrast()
+  });
+
+  $("#delay").click(function() {
+    delayAction()
   });
 
 })

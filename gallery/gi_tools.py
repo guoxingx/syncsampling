@@ -4,7 +4,10 @@ import os
 import time
 import json
 import socket
+import functools
+import socketserver
 from datetime import datetime
+from http.server import HTTPServer, SimpleHTTPRequestHandler, BaseHTTPRequestHandler
 
 
 HostAddr = None
@@ -29,6 +32,135 @@ SIMU_D = 0
 PMActiveTs = None # activate timestamp of power meter
 
 Prev = None
+
+HOST = ("0.0.0.0", 3000)
+INTERVAL = 2.5
+
+Index = 0
+Total = 0
+Images = None
+LastTS = 0
+
+
+class MainHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        print(self.path)
+        # if self.path == '/':
+        #     self.path = 'index.html'
+
+        if "/api/action" in self.path:
+            return self.handle_API_action()
+
+        elif self.path == "/api/image":
+            return self.handle_API_image()
+
+        elif self.path == "/api/images":
+            return self.handle_API_images()
+
+        elif self.path == "/api/images/contrast":
+            return self.handle_API_contrast()
+
+        return SimpleHTTPRequestHandler.do_GET(self)
+
+    def handle_API_contrast(self):
+        res = [
+            "http://localhost:3000/contrast/p_1.png",
+            "http://localhost:3000/contrast/p_2.png",
+            "http://localhost:3000/contrast/p_3.png",
+            "http://localhost:3000/contrast/p_4.png",
+        ]
+        self.set_API_header()
+        return self.response(res)
+
+    def handle_API_action(self):
+        print("receive image ready")
+
+        global Index
+        if Index < Total:
+            # record ts
+            record_signal(time.time(), Index)
+
+            self.set_API_header()
+            return self.response(None)
+
+    def handle_API_image(self):
+        images = load_images()
+        if len(images) <= int(Index):
+            return self.response("")
+        else:
+            print("showing image with index {}".format(Index))
+
+            # update index after 3s
+            update_index()
+
+            url = "http://localhost:3000/images/{}".format(images[Index])
+            self.set_API_header()
+            return self.response(url)
+
+    def handle_API_images(self):
+        images = load_images()
+        print("images: {}".format(images))
+        self.set_API_header()
+        return self.response(images)
+
+    def set_API_header(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+
+    def response(self, data):
+        res = {
+            "code": 0,
+            "data": data,
+            "error": ""
+        }
+        self.wfile.write(json.dumps(res).encode())
+
+
+def load_images():
+    global Images
+    if Images != None:
+        return Images
+
+    Images = []
+    dir_path = "images"
+    for file in os.listdir(dir_path):
+        if file.endswith(".jpg") or file.endswith(".png"):
+            Images.append(file)
+
+    global Total
+    Total = len(Images)
+
+    Images.sort(key=functools.cmp_to_key(cmp_image_name))
+    return Images
+
+
+def cmp_image_name(a, b):
+    return int(a[2:-4]) - int(b[2:-4])
+
+
+def record_signal(ts, index):
+    f = open("signals.txt".format(), 'a+')
+
+    if index == 0:
+        f.write("\n我是分割线\n")
+
+    f.write("{}\n".format(ts))
+    f.close()
+    print("signal time {} write into file".format(ts2time(ts)))
+
+
+def ts2time(ts):
+    return datetime.fromtimestamp(ts).strftime("%H:%M:%S.%f")
+
+
+def update_index():
+    global LastTS, Index
+    if LastTS == 0:
+        LastTS = time.time()
+    if LastTS + INTERVAL < time.time():
+        Index += 1
+        LastTS = time.time()
 
 
 class Sampling(object):
@@ -286,36 +418,18 @@ def sampling_from_powermeter(ts, pm_output_file):
     return cs.avg
 
 
-def require_host():
-    host = input("type in ip of Tx: ")
-    if host == "":
-        host = "localhost"
-    host = host.strip()
-
-    global HostAddr
-    HostAddr = host
-    return True
-
-
 def mode_required():
     print("鬼像数据采集v1.0")
     print("选择要执行的功能:")
-    print("    1 - 采集数据(默认)")
-    print("    2 - 执行接收端")
-    mode = input("type in 1 or 2: ")
+    print("    1 - 数据提取(默认)")
+    print("    2 - 散斑图投影")
+    mode = input("输入 1 或 2: ")
 
     if mode == "":
         mode = 1
     else:
         mode = int(mode)
     return mode
-
-
-def record_signal(ts):
-    f = open("signals.txt".format(), 'a+')
-    f.write("{}\n".format(ts))
-    f.close()
-    log("signal time {} write into file".format(ts2time(ts)))
 
 
 def ts_from_recorded_signals(signalfile):
@@ -336,75 +450,32 @@ def log(s):
     print("{}: {}".format(now, s))
 
 
-def start_client(pm_output_file):
-    log("try to connect tcp host in {}:{}".format(HostAddr, HostPort))
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    host = (HostAddr, HostPort)
-    # host = ("localhost", 26001)
-    client.connect(host)
-    log("tcp connect success!")
-
-    while True:
-        """
-        {"i":0,"a":1,"t": 16467206834791}\n
-        t: ts in millisecond
-        """
-        data = client.recv(255)
-        log("receive raw from Tx: {}".format(data))
-
-        message = json.loads(data.decode())
-        # print("receive from Tx: {}".format(message))
-
-        index = message["i"]
-        log("image at index {} is ready for sampling".format(index))
-
-        ts = time.time()
-        if message["a"] == 4:
-            ts = message["t"] / 1000.0
-            log("use signal time: {}".format(datetime.fromtimestamp(ts)))
-
-        # sampling
-        res = sampling(ts, pm_output_file, index)
-
-        # plan B
-        record_signal(ts)
-
-        f = open(OUTPUT_FILENAME, 'a+')
-        f.write("{}\n".format(res))
-        f.close()
-
-        log("\n")
-        # log("response to Tx\n")
-
-        # sendMessage = {"i": index,"a": 2}
-        # sendData = json.dumps(sendMessage).encode()
-        # end = b'\n'
-        # sendData = sendData + end
-        # client.send(sendData)
-
-
 if __name__ == "__main__":
     mode = mode_required()
 
     if mode == 1:
-        signalfile= filename_required("signals.txt", "signal file")
-        pm_out = filename_required("sample.txt", "power meter")
+        signalfile= filename_required("signals.txt", "散斑信号文件(默认signals.txt)")
+        pm_out = filename_required("sample.txt", "功率计文件(默认sample.txt)")
 
         f = open(OUTPUT_FILENAME, 'a+')
         tss = ts_from_recorded_signals(signalfile)
         for i, ts in enumerate(tss):
-            res = sampling(ts, "sample.txt", i)
+            res = sampling(ts, pm_out, i)
             f.write("{}\n".format(res))
         f.close()
 
     elif mode == 2:
-        if not require_host():
-            print("unrecognized host, abort")
-            exit()
-
-        pm_out = filename_required("sample.txt", "power meter")
-        start_client(pm_out)
+        log("---------------------------------")
+        log("启动散斑图投影系统")
+        log("请打开浏览器localhost:{}".format(HOST[1]))
+        log("开始投影前请确保starlab已开始记录")
+        log("---------------------------------")
+        log("投影完成后，用starlab记录文件和signals.txt来提取数据")
+        log("---------------------------------")
+        handler_object = MainHandler
+        server = socketserver.TCPServer(HOST, handler_object)
+        server.serve_forever()
 
     else:
-        print("unrecognized mode, abort")
+        print("无效指令")
         exit()

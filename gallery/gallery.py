@@ -9,7 +9,7 @@ from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, BaseHTTPRequestHandler
 
 HOST = ("0.0.0.0", 3000)
-INTERVAL = 3
+INTERVAL = 2.5
 
 Index = 0
 Total = 0
