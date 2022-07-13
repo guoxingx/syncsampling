@@ -16,6 +16,8 @@ Total = 0
 Images = None
 LastTS = 0
 
+SignalFile = None
+
 
 class MainHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -115,10 +117,12 @@ def cmp_image_name(a, b):
 
 
 def record_signal(ts, index):
-    f = open("signals.txt".format(), 'a+')
+    if SignalFile == None:
+        SignalFile = "signals_{}.txt".format(datetime.now().strftime("%m%d_%H:%M:%S"))
 
-    if index == 0:
-        f.write("\n我是分割线\n")
+    f = open(SignalFile, 'a+')
+    # if index == 0:
+    #     f.write("\n我是分割线\n")
 
     f.write("{}\n".format(ts))
     f.close()
