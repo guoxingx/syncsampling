@@ -1,4 +1,11 @@
+#! /usr/bin/env python
 # coding: utf-8
+
+"""
+这个文件可单独执行，不包含任何其他自定义文件
+
+更完整的功能请使用gi_tools.py
+"""
 
 import os
 import time
@@ -10,8 +17,8 @@ from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, BaseHTTPRequestHandler
 
 
-HostAddr = None
-HostPort = 26001
+# 散斑投影时间间隔
+INTERVAL = 2.5
 
 # 积分时间，每次采样会先跳过这段时间，再开始采集数据
 INTERGRATION_TIME = 1.5
@@ -19,12 +26,18 @@ INTERGRATION_TIME = 1.5
 # 采集时间，每次采集会取这个长度的时间段
 SAMPLING_TIME = 0.5
 
-# 允许误差，超过这个值视为不同数据
+# 允许误差，超过这个值视为不同数据 (0~1)
 ALLOW_ERROR = 0.1
+
+HostAddr = None
+HostPort = 26001
+HOST = ("0.0.0.0", 3000)
 
 # 输出结果的文件名
 OUTPUT_FILENAME = "output.txt"
 SIGNAL_FILE = "signals.txt"
+
+PM_OUTPUT_DIR = "."
 
 SIMU_TIME = 1646622842
 SIMU_D = 0
@@ -32,9 +45,6 @@ SIMU_D = 0
 PMActiveTs = None # activate timestamp of power meter
 
 Prev = None
-
-HOST = ("0.0.0.0", 3000)
-INTERVAL = 2.5
 
 Index = 0
 Total = 0
@@ -44,7 +54,7 @@ LastTS = 0
 
 class MainHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
-        print(self.path)
+        log(self.path)
         # if self.path == '/':
         #     self.path = 'index.html'
 
@@ -73,7 +83,7 @@ class MainHandler(SimpleHTTPRequestHandler):
         return self.response(res)
 
     def handle_API_action(self):
-        print("receive image ready")
+        log("receive image ready")
 
         global Index
         if Index < Total:
@@ -88,7 +98,7 @@ class MainHandler(SimpleHTTPRequestHandler):
         if len(images) <= int(Index):
             return self.response("")
         else:
-            print("showing image with index {}".format(Index))
+            log("showing image with index {}".format(Index))
 
             # update index after 3s
             update_index()
@@ -99,7 +109,7 @@ class MainHandler(SimpleHTTPRequestHandler):
 
     def handle_API_images(self):
         images = load_images()
-        print("images: {}".format(images))
+        log("images: {}".format(images))
         self.set_API_header()
         return self.response(images)
 
@@ -147,7 +157,7 @@ def record_signal(ts, index):
 
     f.write("{}\n".format(ts))
     f.close()
-    print("signal time {} write into file".format(ts2time(ts)))
+    log("signal time {} write into file".format(ts2time(ts)))
 
 
 def ts2time(ts):
@@ -183,8 +193,14 @@ class Sampling(object):
             return False
 
         last = self.values[-1]
+        if f == 0 and last == 0:
+            return True
 
-        err1 = abs(last - f) / last
+        err1 = 0
+        if last == 0:
+            err1 = abs((last - f) / f)
+        else:
+            err1 = abs((last - f) / last)
 
         if err1 > ALLOW_ERROR:
             return False
@@ -204,13 +220,6 @@ def ts2time(ts):
 
 
 def sampling(ts, pm_output_file, index):
-    # try:
-    #     return sampling_from_powermeter(ts, pm_output_file)
-    #     log("image at index {} sampling complete".format(index))
-    # except Exception as e:
-    #     log("sampling failed with exception: {}".format(e))
-    #     return 0
-
     return sampling_from_powermeter(ts, pm_output_file)
     log("image at index {} sampling complete".format(index))
     return 0
@@ -240,8 +249,6 @@ def empty_samping(ts, pm_output_file):
     cs.ts_begin = ts + INTERGRATION_TIME
     cs.ts_end = ts + INTERGRATION_TIME + SAMPLING_TIME
     log("collect data between {} ~ {}".format(ts2time(cs.ts_begin), ts2time(cs.ts_end)))
-
-    # time.sleep(INTERGRATION_TIME + SAMPLING_TIME)
 
     f = open(pm_output_file, 'r')
 
@@ -323,8 +330,7 @@ def empty_samping(ts, pm_output_file):
     else:
         cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
         log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
-        log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
-        print("")
+        log("avg: {}, count: {}, valid_values: {}\n".format(cs.avg, len(cs.valid_values), cs.valid_values))
 
     f = open(OUTPUT_FILENAME, 'a+')
     f.write("\n")
@@ -410,8 +416,7 @@ def sampling_from_powermeter(ts, pm_output_file):
     else:
         cs.avg = sum([v for v in cs.valid_values]) / len(cs.valid_values)
         log("valid line {} to {}, recorded line from {} to {}".format(cs.valid_begin, cs.valid_end, cs.begin, cs.end))
-        log("avg: {}, count: {}, valid_values: {}".format(cs.avg, len(cs.valid_values), cs.valid_values))
-        print("")
+        log("avg: {}, count: {}, valid_values: {}\n".format(cs.avg, len(cs.valid_values), cs.valid_values))
 
     Prev = None
     Prev = cs
@@ -421,9 +426,10 @@ def sampling_from_powermeter(ts, pm_output_file):
 def mode_required():
     print("鬼像数据采集v1.0")
     print("选择要执行的功能:")
-    print("    1 - 数据提取(默认)")
-    print("    2 - 散斑图投影")
-    mode = input("输入 1 或 2: ")
+    print("    1 - 数据提取-快速模式(默认)")
+    print("    2 - 数据提取")
+    print("    3 - 散斑图投影")
+    mode = input("输入 选项: ")
 
     if mode == "":
         mode = 1
@@ -450,11 +456,48 @@ def log(s):
     print("{}: {}".format(now, s))
 
 
-if __name__ == "__main__":
-    mode = mode_required()
-
+def run(mode):
     if mode == 1:
-        signalfile= filename_required("signals.txt", "散斑信号文件(默认signals.txt)")
+        files = os.listdir(".")
+        files = sorted(files, key=lambda f: os.path.getmtime(f))
+
+        signals = [f for f in files if "signals" in f]
+        if len(signals) == 0:
+            print("没有找到signals文件！")
+            return
+
+        files = os.listdir(PM_OUTPUT_DIR)
+        files = sorted(files, key=lambda f: os.path.getmtime(os.path.join(PM_OUTPUT_DIR, f)))
+        pms = [f for f in files if "signals" not in f and "output" not in f and "txt" in f]
+        if len(pms) == 0:
+            print("没有找到功率计文件！")
+            return
+
+        signalfile, pm_out = signals[-1], pms[-1]
+        outfile = "{}_{}.txt".format(OUTPUT_FILENAME[:-4], datetime.now().strftime("%m%d_%H:%M:%S"))
+
+        # datadir = input("数据文件夹: ")
+        # datadir = "data/{}".format(datadir.strip("/"))
+        # files = os.listdir(datadir)
+        # files.remove("signals.txt")
+        # if "output.txt" in files:
+        #     files.remove("output.txt")
+
+        # pm_out = "{}/{}".format(datadir, files[-1])
+        # print(pm_out, files)
+        # signalfile = "{}/signals.txt".format(datadir)
+        # outfile = "{}/{}".format(datadir, OUTPUT_FILENAME)
+
+        tss = ts_from_recorded_signals(signalfile)
+        f = open(outfile, 'a+')
+        for i, ts in enumerate(tss):
+            res = sampling(ts, pm_out, i)
+            f.write("{}\n".format(res))
+        f.close()
+        print("输出文件：{}".format(outfile))
+
+    elif mode == 2:
+        signalfile = filename_required("signals.txt", "散斑信号文件(默认signals.txt)")
         pm_out = filename_required("sample.txt", "功率计文件(默认sample.txt)")
 
         f = open(OUTPUT_FILENAME, 'a+')
@@ -464,13 +507,11 @@ if __name__ == "__main__":
             f.write("{}\n".format(res))
         f.close()
 
-    elif mode == 2:
+    elif mode == 3:
         log("---------------------------------")
         log("启动散斑图投影系统")
         log("请打开浏览器localhost:{}".format(HOST[1]))
         log("开始投影前请确保starlab已开始记录")
-        log("---------------------------------")
-        log("投影完成后，用starlab记录文件和signals.txt来提取数据")
         log("---------------------------------")
         handler_object = MainHandler
         server = socketserver.TCPServer(HOST, handler_object)
@@ -479,3 +520,7 @@ if __name__ == "__main__":
     else:
         print("无效指令")
         exit()
+
+
+if __name__ == "__main__":
+    run(mode_required())
